@@ -25,6 +25,24 @@
       web-colour-flash
     </div>
     <span class="header-tagline">Upload an HTML file · Generate palettes · Copy &amp; use</span>
+
+    <!-- Compare / Restore buttons (shown after first generate) -->
+    <div class="header-actions" id="header-actions" style="display:none" aria-label="Preview actions">
+      <button id="btn-compare" class="btn-ghost" aria-label="Toggle comparison with original">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="2" y="3" width="9" height="18" rx="1"/>
+          <rect x="13" y="3" width="9" height="18" rx="1"/>
+        </svg>
+        <span class="btn-ghost-text">Compare original</span>
+      </button>
+      <button id="btn-restore" class="btn-ghost" aria-label="Restore original color scheme">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
+          <path d="M3 3v5h5"/>
+        </svg>
+        <span class="btn-ghost-text">Restore original</span>
+      </button>
+    </div>
   </header>
 
   <!-- ── Left panel ─────────────────────────────────────────── -->

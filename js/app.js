@@ -21,6 +21,8 @@ const state = {
   creativity:       50,
   darkMode:         false,
   currentBlobUrl:   null,
+  originalBlobUrl:  null,   // blob URL of the unmodified uploaded HTML
+  comparing:        false,  // whether compare mode is active
 };
 
 // ─── DOM refs ─────────────────────────────────────────────────────────────────
@@ -42,6 +44,9 @@ const noFileMsg        = document.getElementById('no-file-msg');
 const placeholderMsg   = document.getElementById('preview-placeholder');
 const extractedStrip   = document.getElementById('extracted-strip');
 const extractedLabel   = document.getElementById('extracted-label');
+const headerActions    = document.getElementById('header-actions');
+const compareBtn       = document.getElementById('btn-compare');
+const restoreBtn       = document.getElementById('btn-restore');
 
 // ─── Upload ───────────────────────────────────────────────────────────────────
 
@@ -56,6 +61,13 @@ function handleFile(file) {
     state.filename   = file.name;
     uploadHint.textContent = file.name;
     uploadHint.classList.add('has-file');
+
+    // Snapshot the original HTML as a blob URL for compare/restore
+    if (state.originalBlobUrl) URL.revokeObjectURL(state.originalBlobUrl);
+    state.originalBlobUrl = createBlobUrl(state.htmlString);
+    state.comparing = false;
+    headerActions.style.display = 'none';
+    compareBtn.classList.remove('active');
 
     // Extract colors from the file
     state.extracted = extractColors(state.htmlString);
@@ -123,7 +135,11 @@ function doGenerate() {
   });
 
   renderSwatches();
-  if (state.htmlString) updatePreview();
+  if (state.htmlString) {
+    updatePreview();
+    // Show compare/restore buttons after the first generate
+    if (state.originalBlobUrl) headerActions.style.display = '';
+  }
 }
 
 generateBtn.addEventListener('click', doGenerate);
@@ -151,6 +167,12 @@ function updatePreview() {
   if (state.currentBlobUrl) URL.revokeObjectURL(state.currentBlobUrl);
 
   state.currentBlobUrl = createBlobUrl(modified);
+
+  // Exit compare mode so the preview always shows the latest generated result
+  state.comparing = false;
+  compareBtn.classList.remove('active');
+  compareBtn.querySelector('.btn-ghost-text').textContent = 'Compare original';
+
   previewFrame.src = state.currentBlobUrl;
 }
 
@@ -309,6 +331,30 @@ function showToast(msg, type = 'success', anchorEl = null) {
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => toast.classList.remove('show'), 2000);
 }
+
+// ─── Compare / Restore ────────────────────────────────────────────────────────
+
+compareBtn.addEventListener('click', () => {
+  if (!state.originalBlobUrl || !state.currentBlobUrl) return;
+  state.comparing = !state.comparing;
+  if (state.comparing) {
+    previewFrame.src = state.originalBlobUrl;
+    compareBtn.classList.add('active');
+    compareBtn.querySelector('.btn-ghost-text').textContent = 'View generated';
+  } else {
+    previewFrame.src = state.currentBlobUrl;
+    compareBtn.classList.remove('active');
+    compareBtn.querySelector('.btn-ghost-text').textContent = 'Compare original';
+  }
+});
+
+restoreBtn.addEventListener('click', () => {
+  if (!state.extractedPalette) return;
+  state.palette = state.extractedPalette.map(c => c || null);
+  state.locked = new Array(6).fill(false);
+  renderSwatches();
+  updatePreview(); // exits compare mode and updates preview
+});
 
 // ─── Extracted strip ─────────────────────────────────────────────────────────
 

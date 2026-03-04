@@ -7,6 +7,7 @@
  */
 
 // colorApplier imports nothing at module level — all dependencies passed as arguments
+import { hexToHsl, hslToHex } from './colorEngine.js';
 
 // ─── Color distance (perceptual weighted Euclidean in RGB) ────────────────────
 
@@ -87,7 +88,17 @@ function buildGlobalColorMap(allColors, extractedPalette, newPalette) {
       const d = colorDistance(orig, p);
       if (d < minDist) { minDist = d; bestRole = i; }
     });
-    if (bestRole !== -1) map.set(orig, newPalette[bestRole]);
+    if (bestRole !== -1) {
+      // Preserve the lightness delta between the original color and its role
+      // representative. This keeps subtle variations like hover states, borders,
+      // and separator lines alive in the new palette.
+      const { l: origL } = hexToHsl(orig);
+      const { l: roleOrigL } = hexToHsl(extractedPalette[bestRole]);
+      const { h: newH, s: newS, l: newL } = hexToHsl(newPalette[bestRole]);
+      const deltaL = origL - roleOrigL;
+      const appliedL = Math.max(0, Math.min(100, newL + deltaL));
+      map.set(orig, hslToHex(newH, newS, appliedL));
+    }
   }
   return map;
 }

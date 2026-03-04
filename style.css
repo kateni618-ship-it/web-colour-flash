@@ -71,6 +71,48 @@ html, body {
   color: var(--text-muted);
 }
 
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.btn-ghost {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 11px;
+  font-size: 12px;
+  font-weight: 500;
+  font-family: inherit;
+  background: transparent;
+  color: var(--text-muted);
+  border: 1px solid var(--panel-border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background var(--transition), color var(--transition), border-color var(--transition);
+}
+
+.btn-ghost svg {
+  width: 13px;
+  height: 13px;
+  flex-shrink: 0;
+}
+
+.btn-ghost:hover {
+  background: var(--surface-2);
+  color: var(--text-primary);
+  border-color: var(--text-faint);
+}
+
+.btn-ghost.active {
+  background: rgba(91,106,240,.12);
+  color: var(--accent-blue);
+  border-color: var(--accent-blue);
+}
+
 /* ─── Left panel ───────────────────────────────────────────────────────────── */
 .panel {
   background: var(--panel-bg);
