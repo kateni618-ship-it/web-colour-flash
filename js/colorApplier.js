@@ -28,12 +28,27 @@ function colorDistance(hex1, hex2) {
  * @param {string[]}           palette     - 6-color new palette
  * @returns {string}                       - <style> block to prepend
  */
-function buildVarOverrideStyle(cssVarMap, varToRole, palette) {
+function buildVarOverrideStyle(cssVarMap, varToRole, palette, extractedPalette) {
   const decls = [];
   for (const [varName, origHex] of cssVarMap) {
     const roleIdx = varToRole.get(varName);
     if (roleIdx !== undefined && palette[roleIdx]) {
-      decls.push(`  ${varName}: ${palette[roleIdx]};`);
+      let value = palette[roleIdx];
+      // Apply lightness delta so subtle variants (border slightly lighter than bg,
+      // hover slightly lighter than surface) survive in the new palette.
+      const roleOrigHex = extractedPalette?.[roleIdx];
+      if (roleOrigHex) {
+        const { l: origL }     = hexToHsl(origHex);
+        const { l: roleOrigL } = hexToHsl(roleOrigHex);
+        const { h, s, l: newL } = hexToHsl(palette[roleIdx]);
+        const deltaL = origL - roleOrigL;
+        // Flip direction when theme switches dark↔light so a "lighter-than-dark-bg"
+        // border correctly becomes "darker-than-light-bg" instead of near-white.
+        const directionFlipped = (roleOrigL < 45) !== (newL < 45);
+        const effectiveDelta = directionFlipped ? -deltaL : deltaL;
+        value = hslToHex(h, s, Math.max(0, Math.min(100, newL + effectiveDelta)));
+      }
+      decls.push(`  ${varName}: ${value};`);
     }
   }
   if (!decls.length) return '';
@@ -96,7 +111,10 @@ function buildGlobalColorMap(allColors, extractedPalette, newPalette) {
       const { l: roleOrigL } = hexToHsl(extractedPalette[bestRole]);
       const { h: newH, s: newS, l: newL } = hexToHsl(newPalette[bestRole]);
       const deltaL = origL - roleOrigL;
-      const appliedL = Math.max(0, Math.min(100, newL + deltaL));
+      // Flip delta direction when theme switches dark↔light
+      const directionFlipped = (roleOrigL < 45) !== (newL < 45);
+      const effectiveDelta = directionFlipped ? -deltaL : deltaL;
+      const appliedL = Math.max(0, Math.min(100, newL + effectiveDelta));
       map.set(orig, hslToHex(newH, newS, appliedL));
     }
   }
@@ -252,7 +270,7 @@ export function applyPalette(htmlString, extracted, newPalette, extractedPalette
   // Strategy A: inject CSS var overrides (with fuzzy matching)
   if (extracted.hasCssVars && extractedPalette) {
     const varToRole = buildVarToRole(extracted.cssVars, extractedPalette, newPalette);
-    const overrideBlock = buildVarOverrideStyle(extracted.cssVars, varToRole, newPalette);
+    const overrideBlock = buildVarOverrideStyle(extracted.cssVars, varToRole, newPalette, extractedPalette);
     if (overrideBlock) {
       modified = modified.replace(/<style id="wcf-override">[\s\S]*?<\/style>\n?/g, '');
       if (modified.includes('</head>')) {

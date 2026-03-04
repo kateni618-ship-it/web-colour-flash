@@ -90,7 +90,8 @@ function handleFile(file) {
       doGenerate();
     } else {
       renderSwatches();
-      updatePreview();
+      // Show the original HTML as-is on upload (user can Generate to apply a new palette)
+      previewFrame.src = state.originalBlobUrl;
     }
 
     enableControls(true);
@@ -349,11 +350,15 @@ compareBtn.addEventListener('click', () => {
 });
 
 restoreBtn.addEventListener('click', () => {
-  if (!state.extractedPalette) return;
+  if (!state.extractedPalette || !state.originalBlobUrl) return;
   state.palette = state.extractedPalette.map(c => c || null);
   state.locked = new Array(6).fill(false);
+  // Exit compare mode and show the original HTML
+  state.comparing = false;
+  compareBtn.classList.remove('active');
+  compareBtn.querySelector('.btn-ghost-text').textContent = 'Compare original';
   renderSwatches();
-  updatePreview(); // exits compare mode and updates preview
+  previewFrame.src = state.originalBlobUrl;
 });
 
 // ─── Extracted strip ─────────────────────────────────────────────────────────
