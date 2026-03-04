@@ -1,0 +1,361 @@
+/**
+ * app.js
+ * Main orchestrator for web-colour-flash.
+ * Wires together: file upload → color extraction → palette generation → preview → copy/download.
+ */
+
+import { generatePalette, ROLE_NAMES, ROLE_KEYS, HARMONY_OPTIONS, contrastRatio, hslToHex, hexToHsl } from './colorEngine.js';
+import { extractColors } from './htmlParser.js';
+import { applyPalette, createBlobUrl, downloadHtml } from './colorApplier.js';
+
+// ─── State ────────────────────────────────────────────────────────────────────
+
+const state = {
+  htmlString:       null,   // raw uploaded HTML
+  filename:         null,
+  extracted:        null,   // result of extractColors()
+  extractedPalette: null,   // 6-slot role mapping from uploaded file
+  palette:          new Array(6).fill(null),  // current working palette (hex strings)
+  locked:           new Array(6).fill(false), // per-slot lock state
+  harmony:          'complementary',
+  creativity:       50,
+  darkMode:         false,
+  currentBlobUrl:   null,
+};
+
+// ─── DOM refs ─────────────────────────────────────────────────────────────────
+
+const uploadZone      = document.getElementById('upload-zone');
+const fileInput       = document.getElementById('file-input');
+const previewFrame    = document.getElementById('preview-frame');
+const generateBtn     = document.getElementById('btn-generate');
+const copyCssBtn      = document.getElementById('btn-copy-css');
+const copyJsonBtn     = document.getElementById('btn-copy-json');
+const downloadBtn     = document.getElementById('btn-download');
+const harmonySelect   = document.getElementById('harmony-select');
+const creativityRange = document.getElementById('creativity-range');
+const creativityVal   = document.getElementById('creativity-val');
+const darkModeToggle  = document.getElementById('dark-mode-toggle');
+const swatchContainer  = document.getElementById('swatch-container');
+const uploadHint       = document.getElementById('upload-hint');
+const noFileMsg        = document.getElementById('no-file-msg');
+const placeholderMsg   = document.getElementById('preview-placeholder');
+const extractedStrip   = document.getElementById('extracted-strip');
+const extractedLabel   = document.getElementById('extracted-label');
+
+// ─── Upload ───────────────────────────────────────────────────────────────────
+
+function handleFile(file) {
+  if (!file || !file.name.match(/\.html?$/i)) {
+    showToast('Please upload an HTML file (.html or .htm)', 'error');
+    return;
+  }
+  const reader = new FileReader();
+  reader.onload = e => {
+    state.htmlString = e.target.result;
+    state.filename   = file.name;
+    uploadHint.textContent = file.name;
+    uploadHint.classList.add('has-file');
+
+    // Extract colors from the file
+    state.extracted = extractColors(state.htmlString);
+    state.extractedPalette = state.extracted.extractedPalette;
+
+    // Use extracted palette as initial palette if available
+    if (state.extractedPalette) {
+      state.palette = state.extractedPalette.map(c => c || null);
+    }
+
+    // Hide no-file message
+    noFileMsg && (noFileMsg.style.display = 'none');
+    placeholderMsg && (placeholderMsg.style.display = 'none');
+
+    // Show extracted color strip
+    renderExtractedStrip(state.extracted.allColors);
+
+    // If no colors found, generate a fresh palette
+    if (!state.extractedPalette || state.extractedPalette.every(c => !c)) {
+      doGenerate();
+    } else {
+      renderSwatches();
+      updatePreview();
+    }
+
+    enableControls(true);
+  };
+  reader.readAsText(file);
+}
+
+uploadZone.addEventListener('click', () => fileInput.click());
+fileInput.addEventListener('change', e => handleFile(e.target.files[0]));
+
+uploadZone.addEventListener('dragover', e => {
+  e.preventDefault();
+  uploadZone.classList.add('drag-over');
+});
+uploadZone.addEventListener('dragleave', () => uploadZone.classList.remove('drag-over'));
+uploadZone.addEventListener('drop', e => {
+  e.preventDefault();
+  uploadZone.classList.remove('drag-over');
+  handleFile(e.dataTransfer.files[0]);
+});
+
+// ─── Generate ─────────────────────────────────────────────────────────────────
+
+function doGenerate() {
+  const locked = state.locked.map((isLocked, i) => isLocked ? state.palette[i] : null);
+  const bgLum = state.extractedPalette
+    ? (state.extractedPalette[0] ? null : null)
+    : null;
+
+  // Auto-detect if the file prefers a dark theme
+  let preferDark = state.darkMode;
+  if (state.extractedPalette && state.extractedPalette[0]) {
+    const { l } = hexToHsl(state.extractedPalette[0]);
+    preferDark = l < 30;
+  }
+
+  state.palette = generatePalette({
+    locked,
+    harmony:    state.harmony,
+    creativity: state.creativity,
+    darkMode:   preferDark || state.darkMode,
+  });
+
+  renderSwatches();
+  if (state.htmlString) updatePreview();
+}
+
+generateBtn.addEventListener('click', doGenerate);
+
+// Keyboard shortcut: Space or Enter on generate button
+document.addEventListener('keydown', e => {
+  if ((e.key === ' ' || e.key === 'Enter') && e.target === generateBtn) doGenerate();
+  // G key shortcut (when not in an input)
+  if (e.key === 'g' && !['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName)) doGenerate();
+});
+
+// ─── Preview ──────────────────────────────────────────────────────────────────
+
+function updatePreview() {
+  if (!state.htmlString || !state.palette.some(Boolean)) return;
+
+  const modified = applyPalette(
+    state.htmlString,
+    state.extracted,
+    state.palette,
+    state.extractedPalette
+  );
+
+  // Revoke previous blob URL
+  if (state.currentBlobUrl) URL.revokeObjectURL(state.currentBlobUrl);
+
+  state.currentBlobUrl = createBlobUrl(modified);
+  previewFrame.src = state.currentBlobUrl;
+}
+
+// ─── Swatches ─────────────────────────────────────────────────────────────────
+
+function renderSwatches() {
+  swatchContainer.innerHTML = '';
+
+  state.palette.forEach((hex, i) => {
+    if (!hex) return;
+
+    const swatch = document.createElement('div');
+    swatch.className = 'swatch' + (state.locked[i] ? ' locked' : '');
+    swatch.dataset.index = i;
+
+    // Compute whether text on swatch should be light or dark
+    const textColor = contrastRatio(hex, '#ffffff') > 3 ? '#ffffff' : '#111111';
+
+    swatch.innerHTML = `
+      <div class="swatch-color" style="background:${hex}" title="Click to pick color">
+        <input type="color" class="color-picker" value="${hex}" tabindex="-1" aria-label="Pick color for ${ROLE_NAMES[i]}">
+        <span class="swatch-role-badge" style="color:${textColor}">${ROLE_KEYS[i]}</span>
+      </div>
+      <div class="swatch-info">
+        <span class="swatch-role">${ROLE_NAMES[i]}</span>
+        <span class="swatch-hex">${hex}</span>
+      </div>
+      <div class="swatch-actions">
+        <button class="btn-icon btn-lock ${state.locked[i] ? 'active' : ''}" title="${state.locked[i] ? 'Unlock' : 'Lock'} color" aria-label="${state.locked[i] ? 'Unlock' : 'Lock'}">
+          ${state.locked[i] ? lockIcon() : unlockIcon()}
+        </button>
+        <button class="btn-icon btn-copy-swatch" title="Copy hex" aria-label="Copy ${hex}">
+          ${copyIcon()}
+        </button>
+      </div>
+    `;
+
+    // Color picker — clicking swatch color block
+    const colorBlock  = swatch.querySelector('.swatch-color');
+    const pickerInput = swatch.querySelector('.color-picker');
+
+    colorBlock.addEventListener('click', () => pickerInput.click());
+
+    pickerInput.addEventListener('input', e => {
+      const newHex = e.target.value;
+      state.palette[i] = newHex;
+      state.locked[i]  = true; // auto-lock on manual pick
+      renderSwatches();
+      updatePreview();
+    });
+
+    // Lock toggle
+    swatch.querySelector('.btn-lock').addEventListener('click', e => {
+      e.stopPropagation();
+      state.locked[i] = !state.locked[i];
+      renderSwatches();
+    });
+
+    // Copy swatch hex
+    swatch.querySelector('.btn-copy-swatch').addEventListener('click', e => {
+      e.stopPropagation();
+      copyToClipboard(hex, e.currentTarget);
+    });
+
+    swatchContainer.appendChild(swatch);
+  });
+}
+
+// ─── Controls ────────────────────────────────────────────────────────────────
+
+harmonySelect.addEventListener('change', e => {
+  state.harmony = e.target.value;
+});
+
+creativityRange.addEventListener('input', e => {
+  state.creativity = +e.target.value;
+  creativityVal.textContent = e.target.value;
+});
+
+darkModeToggle.addEventListener('change', e => {
+  state.darkMode = e.target.checked;
+});
+
+// Populate harmony select
+HARMONY_OPTIONS.forEach(key => {
+  const opt = document.createElement('option');
+  opt.value = key;
+  opt.textContent = key.charAt(0).toUpperCase() + key.slice(1);
+  harmonySelect.appendChild(opt);
+});
+
+function enableControls(enabled) {
+  generateBtn.disabled  = !enabled;
+  copyCssBtn.disabled   = !enabled;
+  copyJsonBtn.disabled  = !enabled;
+  downloadBtn.disabled  = !enabled;
+}
+enableControls(false);
+
+// ─── Copy & Download ──────────────────────────────────────────────────────────
+
+copyCssBtn.addEventListener('click', () => {
+  const css = state.palette
+    .map((hex, i) => `  --wcf-${ROLE_KEYS[i]}: ${hex};`)
+    .join('\n');
+  const full = `:root {\n${css}\n}`;
+  copyToClipboard(full, copyCssBtn);
+});
+
+copyJsonBtn.addEventListener('click', () => {
+  const obj = {};
+  ROLE_KEYS.forEach((k, i) => { obj[k] = state.palette[i]; });
+  copyToClipboard(JSON.stringify(obj, null, 2), copyJsonBtn);
+});
+
+downloadBtn.addEventListener('click', () => {
+  if (!state.htmlString) return;
+  const modified = applyPalette(
+    state.htmlString,
+    state.extracted,
+    state.palette,
+    state.extractedPalette
+  );
+  downloadHtml(modified, state.filename);
+});
+
+// ─── Utility ──────────────────────────────────────────────────────────────────
+
+async function copyToClipboard(text, triggerEl) {
+  try {
+    await navigator.clipboard.writeText(text);
+    showToast('Copied!', 'success', triggerEl);
+  } catch {
+    // Fallback for restricted contexts
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.cssText = 'position:fixed;opacity:0';
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand('copy');
+    document.body.removeChild(ta);
+    showToast('Copied!', 'success', triggerEl);
+  }
+}
+
+let toastTimer;
+function showToast(msg, type = 'success', anchorEl = null) {
+  let toast = document.getElementById('wcf-toast');
+  if (!toast) {
+    toast = document.createElement('div');
+    toast.id = 'wcf-toast';
+    document.body.appendChild(toast);
+  }
+  toast.textContent = msg;
+  toast.className = `toast toast-${type} show`;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => toast.classList.remove('show'), 2000);
+}
+
+// ─── Extracted strip ─────────────────────────────────────────────────────────
+
+function renderExtractedStrip(colors) {
+  if (!extractedStrip) return;
+  if (!colors || !colors.length) {
+    extractedLabel && (extractedLabel.style.display = 'none');
+    extractedStrip.style.display = 'none';
+    return;
+  }
+  extractedLabel && (extractedLabel.style.display = '');
+  extractedStrip.style.display = '';
+  extractedStrip.innerHTML = '';
+  colors.slice(0, 20).forEach(hex => {
+    const dot = document.createElement('div');
+    dot.className = 'extracted-dot';
+    dot.style.background = hex;
+    dot.title = hex;
+    extractedStrip.appendChild(dot);
+  });
+}
+
+// ─── SVG icons ────────────────────────────────────────────────────────────────
+
+function lockIcon() {
+  return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+    <rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+  </svg>`;
+}
+function unlockIcon() {
+  return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+    <rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/>
+  </svg>`;
+}
+function copyIcon() {
+  return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+    <rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+  </svg>`;
+}
+
+// ─── Init ─────────────────────────────────────────────────────────────────────
+
+// Pre-populate harmony options are added above.
+// Show the generate button as active to invite interaction.
+generateBtn.addEventListener('mouseenter', () => {
+  if (!state.htmlString) {
+    uploadZone.classList.add('pulse');
+    setTimeout(() => uploadZone.classList.remove('pulse'), 600);
+  }
+});
