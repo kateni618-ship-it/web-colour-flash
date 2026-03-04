@@ -161,6 +161,69 @@ function replaceColorInHtml(html, origHex, newHex) {
   return html;
 }
 
+// ─── Single-pass global substitution (prevents chain replacement) ─────────────
+
+/**
+ * Apply all color substitutions in a single regex pass over the HTML.
+ * Using String.replace with a combined regex ensures the original source is
+ * scanned only once — a new color written by one replacement can never be
+ * picked up and overwritten by a later replacement (chain substitution).
+ *
+ * @param {string}             html
+ * @param {Map<string,string>} colorMap  - origHex → newHex
+ * @returns {string}
+ */
+function applyGlobalColorMap(html, colorMap) {
+  const entries = [...colorMap.entries()].filter(([o, n]) => o !== n);
+  if (!entries.length) return html;
+
+  // Build hex lookup and collect rgb/rgba pairs
+  const hexLookup = new Map(); // lowercase hex pattern → newHex
+  const rgbaEntries = [];
+
+  for (const [orig, next] of entries) {
+    const norm = orig.toLowerCase().replace('#', '');
+    if (norm.length !== 6) continue;
+    hexLookup.set('#' + norm, next);
+    // 3-digit shorthand
+    if (norm[0] === norm[1] && norm[2] === norm[3] && norm[4] === norm[5]) {
+      hexLookup.set('#' + norm[0] + norm[2] + norm[4], next);
+    }
+    rgbaEntries.push({ norm, next });
+  }
+
+  // Single-pass hex substitution: all patterns replaced in one .replace() call
+  if (hexLookup.size) {
+    const esc = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const patterns = [...hexLookup.keys()]
+      .map(esc)
+      .sort((a, b) => b.length - a.length); // longer patterns first
+    const re = new RegExp(patterns.join('|'), 'gi');
+    html = html.replace(re, m => hexLookup.get(m.toLowerCase()) || m);
+  }
+
+  // rgb/rgba substitution — sequential is safe here because hex output (#rrggbb)
+  // cannot match rgb(...) patterns, so no chaining is possible.
+  for (const { norm, next } of rgbaEntries) {
+    const r = parseInt(norm.slice(0, 2), 16);
+    const g = parseInt(norm.slice(2, 4), 16);
+    const b = parseInt(norm.slice(4, 6), 16);
+    const nr = parseInt(next.slice(1, 3), 16);
+    const ng = parseInt(next.slice(3, 5), 16);
+    const nb = parseInt(next.slice(5, 7), 16);
+    html = html.replace(
+      new RegExp(`rgb\\(\\s*${r}\\s*,\\s*${g}\\s*,\\s*${b}\\s*\\)`, 'g'),
+      `rgb(${nr}, ${ng}, ${nb})`
+    );
+    html = html.replace(
+      new RegExp(`rgba\\(\\s*${r}\\s*,\\s*${g}\\s*,\\s*${b}\\s*,\\s*([\\d.]+)\\s*\\)`, 'g'),
+      (_, alpha) => `rgba(${nr}, ${ng}, ${nb}, ${alpha})`
+    );
+  }
+
+  return html;
+}
+
 // ─── Main export ──────────────────────────────────────────────────────────────
 
 /**
@@ -189,12 +252,11 @@ export function applyPalette(htmlString, extracted, newPalette, extractedPalette
     }
   }
 
-  // Strategy B (global): map ALL extracted colors to nearest new palette color
+  // Strategy B (global): map ALL extracted colors to nearest new palette color,
+  // applied in a single pass to prevent chain substitution.
   if (extractedPalette && extracted.allColors && extracted.allColors.length) {
     const globalMap = buildGlobalColorMap(extracted.allColors, extractedPalette, newPalette);
-    for (const [orig, next] of globalMap) {
-      if (orig !== next) modified = replaceColorInHtml(modified, orig, next);
-    }
+    modified = applyGlobalColorMap(modified, globalMap);
   }
 
   return modified;
