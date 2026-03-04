@@ -8,6 +8,15 @@
 
 // colorApplier imports nothing at module level — all dependencies passed as arguments
 
+// ─── Color distance (perceptual weighted Euclidean in RGB) ────────────────────
+
+function colorDistance(hex1, hex2) {
+  if (!hex1 || !hex2 || hex1.length < 7 || hex2.length < 7) return Infinity;
+  const r1 = parseInt(hex1.slice(1, 3), 16), g1 = parseInt(hex1.slice(3, 5), 16), b1 = parseInt(hex1.slice(5, 7), 16);
+  const r2 = parseInt(hex2.slice(1, 3), 16), g2 = parseInt(hex2.slice(3, 5), 16), b2 = parseInt(hex2.slice(5, 7), 16);
+  return Math.sqrt(2 * (r1 - r2) ** 2 + 4 * (g1 - g2) ** 2 + 3 * (b1 - b2) ** 2);
+}
+
 // ─── Strategy A: CSS variable injection ──────────────────────────────────────
 
 /**
@@ -38,15 +47,49 @@ function buildVarOverrideStyle(cssVarMap, varToRole, palette) {
  * @param {(string|null)[]}    extractedPalette - 6-slot role palette
  * @returns {Map<string,number>}
  */
-export function buildVarToRole(cssVarMap, extractedPalette) {
+export function buildVarToRole(cssVarMap, extractedPalette, newPalette) {
   const varToRole = new Map();
   for (const [varName, hex] of cssVarMap) {
-    const roleIdx = extractedPalette.findIndex(
+    let roleIdx = extractedPalette.findIndex(
       p => p && p.toLowerCase() === hex.toLowerCase()
     );
+    if (roleIdx === -1) {
+      // Fuzzy fallback: find closest extractedPalette color by perceptual distance
+      let minDist = Infinity;
+      extractedPalette.forEach((p, i) => {
+        if (!p) return;
+        const d = colorDistance(hex, p);
+        if (d < minDist) { minDist = d; roleIdx = i; }
+      });
+    }
     if (roleIdx !== -1) varToRole.set(varName, roleIdx);
   }
   return varToRole;
+}
+
+// ─── Global color map: map every extracted color to nearest palette role ──────
+
+/**
+ * For each color in allColors, find the closest extractedPalette slot (by
+ * perceptual distance) and return the corresponding newPalette color.
+ *
+ * @param {string[]}          allColors        - all unique colors extracted from HTML
+ * @param {(string|null)[]}   extractedPalette - 6-slot role palette (original)
+ * @param {string[]}          newPalette       - 6-slot new palette to apply
+ * @returns {Map<string,string>}               - origHex → newHex
+ */
+function buildGlobalColorMap(allColors, extractedPalette, newPalette) {
+  const map = new Map();
+  for (const orig of allColors) {
+    let minDist = Infinity, bestRole = -1;
+    extractedPalette.forEach((p, i) => {
+      if (!p || !newPalette[i]) return;
+      const d = colorDistance(orig, p);
+      if (d < minDist) { minDist = d; bestRole = i; }
+    });
+    if (bestRole !== -1) map.set(orig, newPalette[bestRole]);
+  }
+  return map;
 }
 
 // ─── Strategy B: direct color substitution ───────────────────────────────────
@@ -132,47 +175,26 @@ function replaceColorInHtml(html, origHex, newHex) {
 export function applyPalette(htmlString, extracted, newPalette, extractedPalette) {
   let modified = htmlString;
 
+  // Strategy A: inject CSS var overrides (with fuzzy matching)
   if (extracted.hasCssVars && extractedPalette) {
-    // Strategy A: inject CSS var overrides
-    const varToRole = buildVarToRole(extracted.cssVars, extractedPalette);
+    const varToRole = buildVarToRole(extracted.cssVars, extractedPalette, newPalette);
     const overrideBlock = buildVarOverrideStyle(extracted.cssVars, varToRole, newPalette);
-
     if (overrideBlock) {
-      // Remove any previously injected override
       modified = modified.replace(/<style id="wcf-override">[\s\S]*?<\/style>\n?/g, '');
-      // Insert before </head> or at beginning
       if (modified.includes('</head>')) {
         modified = modified.replace('</head>', overrideBlock + '</head>');
       } else {
         modified = overrideBlock + modified;
       }
     }
+  }
 
-    // Also apply direct substitution for hardcoded colors that aren't covered by vars
-    if (extractedPalette) {
-      const uncoveredOriginals = extractedPalette
-        .map((orig, i) => ({ orig, i }))
-        .filter(({ orig }) => {
-          if (!orig) return false;
-          // Check if this color is covered by a CSS var
-          for (const [, varHex] of extracted.cssVars) {
-            if (varHex.toLowerCase() === orig.toLowerCase()) return false;
-          }
-          return true;
-        });
-      if (uncoveredOriginals.length) {
-        modified = substituteColors(
-          modified,
-          uncoveredOriginals.map(u => u.orig),
-          uncoveredOriginals.map(u => newPalette[u.i])
-        );
-      }
+  // Strategy B (global): map ALL extracted colors to nearest new palette color
+  if (extractedPalette && extracted.allColors && extracted.allColors.length) {
+    const globalMap = buildGlobalColorMap(extracted.allColors, extractedPalette, newPalette);
+    for (const [orig, next] of globalMap) {
+      if (orig !== next) modified = replaceColorInHtml(modified, orig, next);
     }
-  } else if (extractedPalette) {
-    // Strategy B: direct substitution only
-    const originals = extractedPalette.filter(Boolean);
-    const replacements = extractedPalette.map((_, i) => newPalette[i]).filter((_, i) => extractedPalette[i]);
-    modified = substituteColors(modified, originals, replacements);
   }
 
   return modified;

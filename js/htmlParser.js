@@ -54,7 +54,6 @@ function hslToHexDirect(h, s, l) {
 // ─── Ignored / UI-irrelevant colors ──────────────────────────────────────────
 
 const IGNORED = new Set([
-  '#000000', '#ffffff', '#000', '#fff',
   'transparent', 'inherit', 'currentcolor',
 ]);
 
@@ -160,13 +159,23 @@ function clusterToRoles(hexList) {
     }
   };
 
-  // bg  (highest luminance)
-  pick(analyzed, 0);
-  // surface (second lightest not already used)
-  pick(analyzed.slice(1), 1);
-  // text (lowest luminance)
   const byDarkness = [...analyzed].sort((a, b) => a.lum - b.lum);
-  pick(byDarkness, 4);
+
+  // Detect dark vs light theme by median luminance
+  const midLum = analyzed[Math.floor(analyzed.length / 2)].lum;
+  const isDark = midLum < 0.15;
+
+  if (isDark) {
+    // Dark theme: bg = darkest, surface = second darkest, text = lightest
+    pick(byDarkness, 0);
+    pick(byDarkness.slice(1), 1);
+    pick(analyzed, 4);
+  } else {
+    // Light theme: bg = lightest, surface = second lightest, text = darkest
+    pick(analyzed, 0);
+    pick(analyzed.slice(1), 1);
+    pick(byDarkness, 4);
+  }
   // primary (highest saturation from remaining)
   const bySaturation = [...analyzed].sort((a, b) => b.s - a.s);
   pick(bySaturation, 2);
@@ -222,7 +231,7 @@ export function extractColors(htmlString) {
   const hardcoded = extractHardcoded(allCss);
 
   // Deduplicate: prefer CSS var values, add hardcoded on top
-  const allColors = [...new Set([...cssVarMap.values(), ...hardcoded])].slice(0, 40);
+  const allColors = [...new Set([...cssVarMap.values(), ...hardcoded])].slice(0, 80);
 
   const extractedPalette = allColors.length >= 3 ? clusterToRoles(allColors) : null;
 
