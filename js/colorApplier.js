@@ -291,6 +291,52 @@ export function applyPalette(htmlString, extracted, newPalette, extractedPalette
   return modified;
 }
 
+// ─── Font injection ───────────────────────────────────────────────────────────
+
+// Font families that don't need a Google Fonts <link>
+const SYSTEM_FONTS = new Set(['system-ui', 'sans-serif', 'serif', 'monospace']);
+
+/**
+ * Inject (or remove) a font-family override into an HTML string.
+ *
+ * Injects a comment-delimited block before </head> containing:
+ *   - A Google Fonts <link> (for non-system fonts)
+ *   - A <style> that sets font-family on every element with !important
+ *
+ * Calling with an empty/null fontFamily removes any previously injected block.
+ *
+ * @param {string} html
+ * @param {string} fontFamily  - e.g. 'Inter', 'Noto Sans SC', 'system-ui', or ''
+ * @returns {string}
+ */
+export function applyFont(html, fontFamily) {
+  // Remove any previously injected font block
+  html = html.replace(/<!-- wcf-font-start -->[\s\S]*?<!-- wcf-font-end -->\n?/g, '');
+
+  if (!fontFamily) return html;
+
+  const isSystem = SYSTEM_FONTS.has(fontFamily);
+  const stack = isSystem ? `${fontFamily}, sans-serif` : `'${fontFamily}', sans-serif`;
+
+  let block = '<!-- wcf-font-start -->\n';
+
+  if (!isSystem) {
+    // Encode for Google Fonts URL (spaces → +, rest is ASCII-safe)
+    const gParam = fontFamily.replace(/ /g, '+') + ':wght@400;500;600;700';
+    block += `<link rel="preconnect" href="https://fonts.googleapis.com">\n`;
+    block += `<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>\n`;
+    block += `<link href="https://fonts.googleapis.com/css2?family=${gParam}&display=swap" rel="stylesheet">\n`;
+  }
+
+  block += `<style>*, *::before, *::after { font-family: ${stack} !important; }</style>\n`;
+  block += '<!-- wcf-font-end -->\n';
+
+  if (html.includes('</head>')) {
+    return html.replace('</head>', block + '</head>');
+  }
+  return block + html;
+}
+
 /**
  * Create a blob URL from a modified HTML string.
  * @param {string} html

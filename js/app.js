@@ -6,7 +6,7 @@
 
 import { generatePalette, ROLE_NAMES, ROLE_KEYS, HARMONY_OPTIONS, contrastRatio, hslToHex, hexToHsl } from './colorEngine.js';
 import { extractColors } from './htmlParser.js';
-import { applyPalette, createBlobUrl, downloadHtml } from './colorApplier.js';
+import { applyPalette, applyFont, createBlobUrl, downloadHtml } from './colorApplier.js';
 
 // ─── State ────────────────────────────────────────────────────────────────────
 
@@ -20,6 +20,7 @@ const state = {
   harmony:          'complementary',
   creativity:       50,
   darkMode:         false,
+  fontFamily:       '',   // '' = keep original font
   currentBlobUrl:   null,
   originalBlobUrl:  null,   // blob URL of the unmodified uploaded HTML
   comparing:        false,  // whether compare mode is active
@@ -47,6 +48,7 @@ const extractedLabel   = document.getElementById('extracted-label');
 const headerActions    = document.getElementById('header-actions');
 const compareBtn       = document.getElementById('btn-compare');
 const restoreBtn       = document.getElementById('btn-restore');
+const fontSelect       = document.getElementById('font-select');
 
 // ─── Upload ───────────────────────────────────────────────────────────────────
 
@@ -155,12 +157,13 @@ document.addEventListener('keydown', e => {
 function updatePreview() {
   if (!state.htmlString || !state.palette.some(Boolean)) return;
 
-  const modified = applyPalette(
+  let modified = applyPalette(
     state.htmlString,
     state.extracted,
     state.palette,
     state.extractedPalette
   );
+  modified = applyFont(modified, state.fontFamily);
 
   // Revoke previous blob URL
   if (state.currentBlobUrl) URL.revokeObjectURL(state.currentBlobUrl);
@@ -255,6 +258,34 @@ darkModeToggle.addEventListener('change', e => {
   state.darkMode = e.target.checked;
 });
 
+// ─── Font select ──────────────────────────────────────────────────────────────
+
+const FONT_OPTIONS = [
+  { value: '',                label: '原始字体' },
+  { value: 'Inter',           label: 'Inter' },
+  { value: 'Plus Jakarta Sans', label: 'Plus Jakarta Sans' },
+  { value: 'DM Sans',         label: 'DM Sans' },
+  { value: 'Outfit',          label: 'Outfit' },
+  { value: 'Sora',            label: 'Sora' },
+  { value: 'Nunito',          label: 'Nunito' },
+  { value: 'Noto Sans SC',    label: 'Noto Sans SC' },
+  { value: 'system-ui',       label: '系统字体' },
+];
+
+FONT_OPTIONS.forEach(({ value, label }) => {
+  const opt = document.createElement('option');
+  opt.value = value;
+  opt.textContent = label;
+  fontSelect.appendChild(opt);
+});
+
+fontSelect.addEventListener('change', e => {
+  state.fontFamily = e.target.value;
+  if (state.htmlString && state.palette.some(Boolean)) {
+    updatePreview();
+  }
+});
+
 // Populate harmony select
 const HARMONY_LABELS = {
   complementary: '互补色',
@@ -296,12 +327,13 @@ copyJsonBtn.addEventListener('click', () => {
 
 downloadBtn.addEventListener('click', () => {
   if (!state.htmlString) return;
-  const modified = applyPalette(
+  let modified = applyPalette(
     state.htmlString,
     state.extracted,
     state.palette,
     state.extractedPalette
   );
+  modified = applyFont(modified, state.fontFamily);
   downloadHtml(modified, state.filename);
 });
 
