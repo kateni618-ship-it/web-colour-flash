@@ -52,7 +52,7 @@ const restoreBtn       = document.getElementById('btn-restore');
 
 function handleFile(file) {
   if (!file || !file.name.match(/\.html?$/i)) {
-    showToast('Please upload an HTML file (.html or .htm)', 'error');
+    showToast('请上传 HTML 文件（.html 或 .htm）', 'error');
     return;
   }
   const reader = new FileReader();
@@ -76,6 +76,14 @@ function handleFile(file) {
     // Use extracted palette as initial palette if available
     if (state.extractedPalette) {
       state.palette = state.extractedPalette.map(c => c || null);
+    }
+
+    // Auto-detect dark mode from the uploaded HTML and sync the toggle.
+    // The toggle now owns the preference — doGenerate reads only state.darkMode.
+    if (state.extractedPalette && state.extractedPalette[0]) {
+      const { l } = hexToHsl(state.extractedPalette[0]);
+      state.darkMode = l < 30;
+      darkModeToggle.checked = state.darkMode;
     }
 
     // Hide no-file message
@@ -117,22 +125,12 @@ uploadZone.addEventListener('drop', e => {
 
 function doGenerate() {
   const locked = state.locked.map((isLocked, i) => isLocked ? state.palette[i] : null);
-  const bgLum = state.extractedPalette
-    ? (state.extractedPalette[0] ? null : null)
-    : null;
-
-  // Auto-detect if the file prefers a dark theme
-  let preferDark = state.darkMode;
-  if (state.extractedPalette && state.extractedPalette[0]) {
-    const { l } = hexToHsl(state.extractedPalette[0]);
-    preferDark = l < 30;
-  }
 
   state.palette = generatePalette({
     locked,
     harmony:    state.harmony,
     creativity: state.creativity,
-    darkMode:   preferDark || state.darkMode,
+    darkMode:   state.darkMode,
   });
 
   renderSwatches();
@@ -172,7 +170,7 @@ function updatePreview() {
   // Exit compare mode so the preview always shows the latest generated result
   state.comparing = false;
   compareBtn.classList.remove('active');
-  compareBtn.querySelector('.btn-ghost-text').textContent = 'Compare original';
+  compareBtn.querySelector('.btn-ghost-text').textContent = '对比原稿';
 
   previewFrame.src = state.currentBlobUrl;
 }
@@ -258,10 +256,17 @@ darkModeToggle.addEventListener('change', e => {
 });
 
 // Populate harmony select
+const HARMONY_LABELS = {
+  complementary: '互补色',
+  triadic:       '三角色',
+  analogous:     '相似色',
+  split:         '分裂互补',
+  tetradic:      '四色',
+};
 HARMONY_OPTIONS.forEach(key => {
   const opt = document.createElement('option');
   opt.value = key;
-  opt.textContent = key.charAt(0).toUpperCase() + key.slice(1);
+  opt.textContent = HARMONY_LABELS[key] || key;
   harmonySelect.appendChild(opt);
 });
 
@@ -305,7 +310,7 @@ downloadBtn.addEventListener('click', () => {
 async function copyToClipboard(text, triggerEl) {
   try {
     await navigator.clipboard.writeText(text);
-    showToast('Copied!', 'success', triggerEl);
+    showToast('已复制！', 'success', triggerEl);
   } catch {
     // Fallback for restricted contexts
     const ta = document.createElement('textarea');
@@ -315,7 +320,7 @@ async function copyToClipboard(text, triggerEl) {
     ta.select();
     document.execCommand('copy');
     document.body.removeChild(ta);
-    showToast('Copied!', 'success', triggerEl);
+    showToast('已复制！', 'success', triggerEl);
   }
 }
 
@@ -341,11 +346,11 @@ compareBtn.addEventListener('click', () => {
   if (state.comparing) {
     previewFrame.src = state.originalBlobUrl;
     compareBtn.classList.add('active');
-    compareBtn.querySelector('.btn-ghost-text').textContent = 'View generated';
+    compareBtn.querySelector('.btn-ghost-text').textContent = '查看新稿';
   } else {
     previewFrame.src = state.currentBlobUrl;
     compareBtn.classList.remove('active');
-    compareBtn.querySelector('.btn-ghost-text').textContent = 'Compare original';
+    compareBtn.querySelector('.btn-ghost-text').textContent = '对比原稿';
   }
 });
 
@@ -356,7 +361,7 @@ restoreBtn.addEventListener('click', () => {
   // Exit compare mode and show the original HTML
   state.comparing = false;
   compareBtn.classList.remove('active');
-  compareBtn.querySelector('.btn-ghost-text').textContent = 'Compare original';
+  compareBtn.querySelector('.btn-ghost-text').textContent = '对比原稿';
   renderSwatches();
   previewFrame.src = state.originalBlobUrl;
 });

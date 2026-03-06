@@ -113,32 +113,44 @@ function jitter(value, range, min = 0, max = 100) {
 function buildRoleColors(hues, creativity, isDark) {
   const c = creativity / 100; // 0–1
 
-  const bgL      = isDark ? jitter(10, c * 8, 4, 18)   : jitter(97, c * 4, 90, 100);
-  const bgS      = jitter(isDark ? 10 : 8, c * 12, 0, 25);
-  const surfL    = isDark ? jitter(16, c * 6, 10, 24)   : jitter(93, c * 4, 85, 98);
-  const surfS    = jitter(isDark ? 12 : 10, c * 10, 0, 25);
-  const primaryS = jitter(72, c * 20, 40, 95);
-  const primaryL = jitter(isDark ? 58 : 48, c * 12, 32, 68);
-  const secS     = jitter(55, c * 22, 30, 85);
-  const secL     = jitter(isDark ? 60 : 50, c * 12, 35, 70);
-  const textL    = isDark ? jitter(92, c * 8, 80, 100) : jitter(10, c * 8, 4, 22);
-  const textS    = jitter(8, c * 10, 0, 20);
-  const accentS  = jitter(80, c * 18, 50, 100);
-  const accentL  = jitter(isDark ? 62 : 50, c * 12, 35, 68);
+  // Backgrounds — low saturation, very high or very low lightness
+  const bgL   = isDark ? jitter(9,  c * 6, 4, 16)    : jitter(97, c * 3, 93, 100);
+  const bgS   = jitter(isDark ? 12 : 6, c * 10, 0, 22);
+
+  // Surface — slightly offset from bg so panels are distinct
+  const surfGap = isDark ? jitter(7, c * 3, 5, 12) : jitter(6, c * 2, 4, 10);
+  const surfL   = isDark ? bgL + surfGap : bgL - surfGap;
+  const surfS   = jitter(isDark ? 14 : 8, c * 8, 0, 22);
+
+  // Primary — bold, vibrant; dark mode slightly lighter to pop on dark bg
+  const primaryS = jitter(78, c * 16, 55, 100);
+  const primaryL = isDark ? jitter(60, c * 10, 50, 72) : jitter(46, c * 10, 34, 58);
+
+  // Secondary — harmonious but slightly desaturated vs primary
+  const secS = jitter(60, c * 18, 38, 88);
+  const secL  = isDark ? jitter(58, c * 10, 46, 70) : jitter(50, c * 10, 38, 62);
+
+  // Text — near-black/near-white, tinted toward bg hue for warmth
+  const textL = isDark ? jitter(90, c * 8, 80, 98) : jitter(12, c * 6, 4, 22);
+  const textS = jitter(isDark ? 10 : 8, c * 8, 0, 18);
+
+  // Accent — maximum saturation, slightly offset lightness from primary
+  const accentS = jitter(88, c * 12, 65, 100);
+  const accentL = isDark ? jitter(64, c * 10, 52, 76) : jitter(48, c * 10, 36, 60);
 
   return [
-    hslToHex(hues[0], bgS, bgL),         // bg
-    hslToHex(hues[0], surfS, surfL),      // surface
-    hslToHex(hues[1], primaryS, primaryL),// primary
-    hslToHex(hues[2], secS, secL),        // secondary
-    hslToHex(hues[0], textS, textL),      // text
-    hslToHex(hues[3], accentS, accentL),  // accent
+    hslToHex(hues[0], bgS, bgL),                           // bg
+    hslToHex(hues[0], surfS, Math.max(0, Math.min(100, surfL))), // surface
+    hslToHex(hues[1], primaryS, primaryL),                  // primary
+    hslToHex(hues[2], secS, secL),                          // secondary
+    hslToHex(hues[0], textS, textL),                        // text
+    hslToHex(hues[3], accentS, accentL),                    // accent
   ];
 }
 
 // ─── Main export ──────────────────────────────────────────────────────────────
 
-export const ROLE_NAMES = ['Background', 'Surface', 'Primary', 'Secondary', 'Text', 'Accent'];
+export const ROLE_NAMES = ['背景', '面板', '主色', '辅色', '文字', '强调'];
 export const ROLE_KEYS  = ['bg', 'surface', 'primary', 'secondary', 'text', 'accent'];
 
 /**
@@ -169,12 +181,24 @@ export function generatePalette({ locked = [], harmony = 'complementary', creati
   if (!locked[4]) {
     palette[4] = enforceContrast(palette[4], palette[0], 5.0);
   }
+
   // Enforce primary readability (not required to pass WCAG on bg, but should be visible)
   if (!locked[2] && contrastRatio(palette[2], palette[0]) < 2.5) {
     let { h, s, l } = hexToHsl(palette[2]);
     const bgLum = relativeLuminance(palette[0]);
     l = bgLum > 0.5 ? Math.max(20, l - 20) : Math.min(80, l + 20);
     palette[2] = hslToHex(h, s, l);
+  }
+
+  // Enforce bg/surface are visually distinct (min 4% lightness gap)
+  // Dark mode: surface is lighter than bg. Light mode: surface is darker than bg.
+  if (!locked[0] && !locked[1]) {
+    const { l: bl } = hexToHsl(palette[0]);
+    const { h: sh, s: ss, l: sl } = hexToHsl(palette[1]);
+    if (Math.abs(bl - sl) < 4) {
+      const direction = darkMode ? 1 : -1;
+      palette[1] = hslToHex(sh, ss, Math.max(0, Math.min(100, bl + direction * 6)));
+    }
   }
 
   return palette;

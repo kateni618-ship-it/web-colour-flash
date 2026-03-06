@@ -24,23 +24,23 @@
       </svg>
       web-colour-flash
     </div>
-    <span class="header-tagline">Upload an HTML file · Generate palettes · Copy &amp; use</span>
+    <span class="header-tagline">上传 HTML · 生成配色 · 复制使用</span>
 
     <!-- Compare / Restore buttons (shown after first generate) -->
-    <div class="header-actions" id="header-actions" style="display:none" aria-label="Preview actions">
-      <button id="btn-compare" class="btn-ghost" aria-label="Toggle comparison with original">
+    <div class="header-actions" id="header-actions" style="display:none" aria-label="预览操作">
+      <button id="btn-compare" class="btn-ghost" aria-label="对比原稿">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <rect x="2" y="3" width="9" height="18" rx="1"/>
           <rect x="13" y="3" width="9" height="18" rx="1"/>
         </svg>
-        <span class="btn-ghost-text">Compare original</span>
+        <span class="btn-ghost-text">对比原稿</span>
       </button>
-      <button id="btn-restore" class="btn-ghost" aria-label="Restore original color scheme">
+      <button id="btn-restore" class="btn-ghost" aria-label="恢复原稿配色">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
           <path d="M3 3v5h5"/>
         </svg>
-        <span class="btn-ghost-text">Restore original</span>
+        <span class="btn-ghost-text">恢复原稿</span>
       </button>
     </div>
   </header>
@@ -56,35 +56,35 @@
         <line x1="12" y1="3" x2="12" y2="15"/>
       </svg>
       <p class="upload-hint" id="upload-hint">
-        Drop your HTML file here
-        <span>or click to browse</span>
+        拖放 HTML 文件到此处
+        <span>或点击选择文件</span>
       </p>
       <input type="file" id="file-input" accept=".html,.htm" style="display:none" aria-hidden="true">
     </div>
 
     <!-- Extracted color strip -->
-    <div class="section-label" id="extracted-label" style="display:none">Extracted colors</div>
+    <div class="section-label" id="extracted-label" style="display:none">提取的颜色</div>
     <div class="extracted-strip" id="extracted-strip"></div>
 
     <!-- Palette swatches -->
-    <div class="section-label">Palette</div>
+    <div class="section-label">调色盘</div>
     <div id="swatch-container" aria-label="Color palette">
       <!-- Populated by app.js -->
     </div>
 
     <p id="no-file-msg" style="display:none">
-      Upload an HTML file to extract its colors, or click Generate to start fresh.
+      上传 HTML 文件以提取颜色，或直接点击生成开始创作。
     </p>
 
     <div class="divider"></div>
 
     <!-- Controls -->
-    <div class="section-label">Settings</div>
+    <div class="section-label">设置</div>
     <div class="controls">
 
       <!-- Harmony -->
       <div class="control-row">
-        <span class="control-label">Harmony</span>
+        <span class="control-label">和谐</span>
         <select id="harmony-select" class="select" aria-label="Color harmony type">
           <!-- Options added by app.js -->
         </select>
@@ -92,7 +92,7 @@
 
       <!-- Creativity -->
       <div class="control-row">
-        <span class="control-label">Creativity</span>
+        <span class="control-label">随机度</span>
         <div class="range-wrap">
           <input type="range" id="creativity-range" class="range"
                  min="0" max="100" value="50"
@@ -103,13 +103,13 @@
 
       <!-- Dark mode hint -->
       <div class="control-row">
-        <span class="control-label">Dark bg</span>
-        <label class="toggle-wrap" for="dark-mode-toggle" aria-label="Generate dark background palette">
+        <span class="control-label">深色背景</span>
+        <label class="toggle-wrap" for="dark-mode-toggle" aria-label="生成深色背景调色盘">
           <input type="checkbox" id="dark-mode-toggle" class="toggle-input">
           <span class="toggle-track">
             <span class="toggle-thumb"></span>
           </span>
-          <span class="toggle-label-text">Prefer dark</span>
+          <span class="toggle-label-text">深色模式</span>
         </label>
       </div>
 
@@ -120,24 +120,24 @@
     <!-- Actions -->
     <div class="actions">
 
-      <button id="btn-generate" class="btn btn-generate" aria-label="Generate new palette (G)">
+      <button id="btn-generate" class="btn btn-generate" aria-label="生成新调色盘 (G)">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/>
         </svg>
-        Generate
+        生成
       </button>
 
-      <p class="shortcut-hint">Press <kbd>G</kbd> to generate</p>
+      <p class="shortcut-hint">按 <kbd>G</kbd> 键生成</p>
 
       <div class="btn-row">
-        <button id="btn-copy-css" class="btn btn-secondary" disabled aria-label="Copy as CSS variables">
+        <button id="btn-copy-css" class="btn btn-secondary" disabled aria-label="复制为 CSS 变量">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <rect x="9" y="9" width="13" height="13" rx="2"/>
             <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
           </svg>
-          CSS vars
+          CSS 变量
         </button>
-        <button id="btn-copy-json" class="btn btn-secondary" disabled aria-label="Copy as JSON">
+        <button id="btn-copy-json" class="btn btn-secondary" disabled aria-label="复制为 JSON">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <rect x="9" y="9" width="13" height="13" rx="2"/>
             <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
@@ -146,13 +146,13 @@
         </button>
       </div>
 
-      <button id="btn-download" class="btn btn-secondary" disabled aria-label="Download recoloured HTML file">
+      <button id="btn-download" class="btn btn-secondary" disabled aria-label="下载重新配色的 HTML 文件">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
           <polyline points="7 10 12 15 17 10"/>
           <line x1="12" y1="15" x2="12" y2="3"/>
         </svg>
-        Download HTML
+        下载 HTML
       </button>
 
     </div>
@@ -174,9 +174,9 @@
         <path d="M3 9h18M9 21V9"/>
       </svg>
       <p>
-        <strong>Upload an HTML file to get started</strong>
-        Drop a website, dashboard, or SaaS product HTML file on the left panel,
-        then hit Generate to remix its colour palette.
+        <strong>上传 HTML 文件开始使用</strong>
+        将网站、仪表盘或产品 HTML 文件拖放到左侧面板，
+        点击「生成」即可重新混搭配色方案。
       </p>
     </div>
   </main>
